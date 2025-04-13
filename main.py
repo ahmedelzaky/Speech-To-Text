@@ -1,16 +1,19 @@
-from fastapi import FastAPI, UploadFile, File
-from processing import convert_to_wav, speech_to_text  # Note the dotimport shutil
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from processing import convert_to_wav, speech_to_text
+import shutil
 import os
-app = FastAPI()
 
+app = FastAPI()
 
 @app.get("/")
 def read_root():
     return {"Hello": "World"}
+
 @app.post("/transcribe")
 async def transcribe_audio(file: UploadFile = File(...)):
+    input_path = f"temp_{file.filename}" # Temporary file path 
+
     # Save uploaded file
-    input_path = file.filename
     with open(input_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
@@ -22,8 +25,9 @@ async def transcribe_audio(file: UploadFile = File(...)):
     # Transcribe
     text = speech_to_text(wav_path)
 
-    # Optional: cleanup
+    # Cleanup
     os.remove(input_path)
     os.remove(wav_path)
 
     return {"transcription": text}
+
