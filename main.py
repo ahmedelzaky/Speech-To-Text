@@ -1,5 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
-from processing import convert_to_wav, speech_to_text
+from processing.audio_converter import convert_to_wav
+from processing.speech_recognizer import speech_to_text
 import shutil
 import os
 
