@@ -2,86 +2,69 @@ import noisereduce as nr
 import librosa
 import torch
 
+# Function to find a noise profile from silent segments in the audio
+# This helps in identifying what background noise to remove
 
-def find_noise_profile(audio, sample_rate, min_duration=0.5):
+
+def find_noise_profile(audio, sample_rate):
     """
-    Extracts a noise profile from a quiet section of the audio.
-    This is used as a reference for noise reduction later.
+    Identify silent segments in audio to extract noise profile.
 
-    Parameters:
-        audio (np.ndarray): The audio waveform (time series data)
-        sample_rate (int): Samples per second (Hz)
-        min_duration (float): Minimum length of noise sample to extract (in seconds)
+    Args:
+        audio (np.array): Audio signal as numpy array
+        sample_rate (int): Sample rate of the audio
 
     Returns:
-        np.ndarray: A sample of background noise to use as reference
-
-    Note:
-        - Uses librosa's voice activity detection to find silent intervals
-        - Falls back to first 'min_duration' seconds if no silence is found
-        - The quality of noise reduction heavily depends on this profile
+        np.array: Segment of audio containing just noise (for noise reduction)
     """
-    min_samples = int(min_duration * sample_rate)
-
-    # Detect non-silent intervals (voice/sound regions)
+    # Split audio into segments where sound is detected (non-silent intervals)
     intervals = librosa.effects.split(
-        audio,
-        top_db=25,  # Threshold for silence detection (higher = more sensitive)
-        frame_length=1024,  # FFT window size
-        hop_length=256  # Distance between frames
-    )
+        audio, top_db=20, frame_length=1024, hop_length=512)
 
-    # If no voice activity detected, use beginning of audio
-    if len(intervals) == 0:
-        return audio[:min_samples]
+    # If silent segments found, use first segment as noise profile
+    if len(intervals) > 0:
+        return audio[intervals[0][0]:intervals[0][1]]
 
-    # Vectorized slice calculation
-    start = max(0, intervals[0][0] - min_samples)
-    return audio[start:intervals[0][0]] if start < intervals[0][0] else audio[:min_samples]
+    # If no silent segments found, return first second of audio as fallback
+    return audio[:sample_rate]
+
+# Function to process an audio chunk through noise reduction and speech recognition
 
 
 def process_chunk(chunk, sample_rate, processor, model, noise_profile):
     """
-    Processes an audio chunk through noise reduction and speech recognition.
+    Process an audio chunk through noise reduction and speech recognition.
 
-    Parameters:
-        chunk (np.ndarray): Audio segment to process
-        sample_rate (int): Audio sample rate
-        processor: HuggingFace Whisper feature extractor
-        model: Pretrained Whisper ASR model
-        noise_profile (np.ndarray): Reference noise sample
+    Args:
+        chunk (np.array): Audio chunk to process
+        sample_rate (int): Sample rate of the audio
+        processor: HuggingFace processor for the ASR model
+        model: HuggingFace ASR model
+        noise_profile (np.array): Noise profile for noise reduction
 
     Returns:
         str: Recognized text from the audio chunk
-
-    Processing Pipeline:
-        1. Noise reduction using the reference profile
-        2. Audio feature extraction
-        3. Speech recognition inference
-        4. Text decoding
     """
-    # Step 1: Reduce background noise
+    # Reduce noise in the audio chunk using the noise profile
     reduced_noise = nr.reduce_noise(
         y=chunk,
-        y_noise=noise_profile,  # Reference noise from find_noise_profile()
+        y_noise=noise_profile,
         sr=sample_rate,
-        prop_decrease=0.85,  # Aggressiveness of noise reduction (0-1)
-        n_fft=512,  # Smaller FFT window
-        win_length=400  # Optimized window length
+        prop_decrease=0.85  # Reduce noise by 85%
     )
 
-    # Step 2: Prepare features for Whisper model
+    # Prepare audio for the ASR model using the processor
     inputs = processor(
         reduced_noise,
         sampling_rate=sample_rate,
-        return_tensors="pt",   # PyTorch tensors
-        padding=True,  # Pad to max length in batch
+        return_tensors="pt",  # Return PyTorch tensors
+        padding=True
     )
 
-    # Step 3: Run inference (no gradients for efficiency)
+    # Run inference (with gradient calculation disabled for efficiency)
     with torch.no_grad():
         logits = model(inputs.input_values).logits
 
-    # Step 4: Decode predicted tokens to text
+    # Decode the predicted tokens into text
     predicted_ids = torch.argmax(logits, dim=-1)
     return processor.batch_decode(predicted_ids)[0]
