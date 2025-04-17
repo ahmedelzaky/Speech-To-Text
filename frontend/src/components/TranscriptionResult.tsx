@@ -19,7 +19,7 @@ const TranscriptionResult = ({
   const textRef = useRef<HTMLDivElement>(null);
 
   // Use typewriter hook to progressively show text
-  const animatedText = useTypewriter(text, isLoading, 30);
+  const animatedText = useTypewriter(text, isLoading, 15);
 
   const handleCopy = async () => {
     try {
@@ -30,12 +30,6 @@ const TranscriptionResult = ({
       console.error("Copy failed:", err);
     }
   };
-
-  useEffect(() => {
-    if (textRef.current) {
-      textRef.current.scrollTop = textRef.current.scrollHeight;
-    }
-  }, [animatedText]);
 
   return (
     <Card className="p-6 w-full max-w-4xl mx-auto mt-10">

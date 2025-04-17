@@ -6,72 +6,87 @@ import yt_dlp
 from concurrent.futures import ThreadPoolExecutor
 import asyncio
 import tempfile
-import re
 from uuid import uuid4
 import os
 
+# Initialize FastAPI application
 app = FastAPI()
+
+# Regular expression to validate YouTube URLs
 YOUTUBE_REGEX = r'(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.(com|be)/'
 
-
+# Configure CORS (Cross-Origin Resource Sharing) middleware
+# This allows frontend applications from these origins to access the API
 origins = [
-    "http://localhost:8080",
-    "http://localhost:4173",
+    "http://localhost:8080",  # Common Vue.js dev server port
+    "http://localhost:4173",  # Common Vite preview port
 ]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=origins,  # Allowed origins
+    allow_credentials=True,  # Allow cookies
+    allow_methods=["*"],     # Allow all methods
+    allow_headers=["*"],     # Allow all headers
 )
 
 
 @app.get("/")
 def read_root():
+    """Basic health check endpoint"""
     return {"Hello": "World"}
 
 
 @app.websocket("/ws/transcribe")
 async def websocket_endpoint(websocket: WebSocket):
+    """
+    WebSocket endpoint for audio file transcription.
+
+    Handles both the upload and real-time transcription of audio files.
+    Workflow:
+    1. Receives metadata (filename) as JSON
+    2. Receives audio binary data
+    3. Converts to WAV if needed
+    4. Processes audio in chunks
+    5. Streams transcription results back
+    6. Cleans up temporary files
+    """
     await websocket.accept()
     try:
-        while True:
-            # Step 1: receive metadata (e.g., {"filename": "recording.mp3"})
-            file_info = await websocket.receive_json()
-            original_filename = file_info.get("filename", "audio.unknown")
+        # Step 1: Receive metadata (e.g., {"filename": "recording.mp3"})
+        file_info = await websocket.receive_json()
+        original_filename = file_info.get("filename", "audio.unknown")
 
-            # Step 2: receive binary audio file
-            audio_bytes = await websocket.receive_bytes()
+        # Step 2: Receive binary audio file
+        audio_bytes = await websocket.receive_bytes()
 
-            # Prepare paths
-            _, ext = os.path.splitext(original_filename)
-            temp_dir = tempfile.gettempdir()
-            input_path = os.path.join(temp_dir, f"{uuid4().hex}{ext}")
-            wav_path = input_path  # Default
+        # Prepare temporary file paths
+        _, ext = os.path.splitext(original_filename)
+        temp_dir = tempfile.gettempdir()
+        input_path = os.path.join(temp_dir, f"{uuid4().hex}{ext}")
+        wav_path = input_path  # Default path if no conversion needed
 
-            # Save original file
-            with open(input_path, "wb") as f:
-                f.write(audio_bytes)
+        # Save original file to temporary location
+        with open(input_path, "wb") as f:
+            f.write(audio_bytes)
 
-            # Convert if not WAV
-            if ext.lower() != ".wav":
-                wav_path = os.path.join(temp_dir, f"{uuid4().hex}.wav")
-                if not convert_to_wav(input_path, wav_path):
-                    await websocket.send_json({"error": "Conversion to WAV failed"})
-                    os.remove(input_path)
-                    continue
+        # Convert to WAV if not already in WAV format
+        if ext.lower() != ".wav":
+            wav_path = os.path.join(temp_dir, f"{uuid4().hex}.wav")
+            if not convert_to_wav(input_path, wav_path):
+                await websocket.send_json({"error": "Conversion to WAV failed"})
+                os.remove(input_path)
 
-            # Transcribe and stream results
-            async for text_chunk in process_audio_chunks(wav_path):
-                await websocket.send_json({"text": text_chunk})
+        # Process audio in chunks and stream transcription results
+        async for text_chunk in process_audio_chunks(wav_path):
+            await websocket.send_json({"text": text_chunk})
 
-            await websocket.send_json({"status": "complete"})
+        # Signal completion
+        await websocket.send_json({"status": "complete"})
 
-            # Clean up
-            for path in {input_path, wav_path}:
-                if os.path.exists(path):
-                    os.remove(path)
+        # Clean up temporary files
+        for path in {input_path, wav_path}:
+            if os.path.exists(path):
+                os.remove(path)
 
     except WebSocketDisconnect:
         print("WebSocket disconnected")
@@ -81,8 +96,18 @@ async def websocket_endpoint(websocket: WebSocket):
 
 @app.websocket("/ws/transcribe-youtube")
 async def websocket_transcribe(websocket: WebSocket):
+    """
+    WebSocket endpoint for YouTube video transcription.
+
+    Workflow:
+    1. Receives YouTube URL
+    2. Downloads audio using yt-dlp
+    3. Converts to WAV
+    4. Processes audio in chunks
+    5. Streams transcription results back
+    """
     await websocket.accept()
-    executor = ThreadPoolExecutor()
+    executor = ThreadPoolExecutor()  # For running blocking IO operations
 
     try:
         # Receive YouTube URL from client
@@ -93,35 +118,36 @@ async def websocket_transcribe(websocket: WebSocket):
             await websocket.send_json({"error": "Missing YouTube URL"})
             return
 
-        # Send initial status
+        # Send initial status to client
         await websocket.send_json({"status": "downloading"})
 
-        # Download audio
+        # YouTube download configuration
         ydl_opts = {
-            'format': 'bestaudio/best',
-            'outtmpl': 'temp_uploads/%(id)s.%(ext)s',
+            'format': 'bestaudio/best',  # Get best quality audio
+            'outtmpl': 'temp_uploads/%(id)s.%(ext)s',  # Output template
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'wav',
-                'preferredquality': '192',
+                'preferredcodec': 'wav',  # Convert to WAV format
+                'preferredquality': '192',  # Audio quality
             }],
-            'noplaylist': True,
-            'quiet': True,
-            'no_warnings': True,
-            'progress_hooks': [lambda d: print(f"Download progress: {d.get('_percent_str', 'N/A')}")]
+            'noplaylist': True,  # Don't download playlists
+            'no_warnings': True,  # Suppress warnings
+            # send progress % updates to client
+            'progress_hooks': [lambda d: asyncio.run(websocket.send_json({"progress": d.get('downloaded_bytes', 0) / d.get('total_bytes', 1) * 100}))]
         }
 
-        # Run blocking tasks in thread pool
+        # Run blocking download in thread pool to avoid blocking event loop
         loop = asyncio.get_event_loop()
         info = await loop.run_in_executor(executor, download_audio, url, ydl_opts)
 
-        # Send conversion status
+        # Notify client that conversion is starting
         await websocket.send_json({"status": "converting"})
 
-        # Process audio in chunks
+        # Process audio and stream transcription chunks
         async for text_chunk in process_audio_chunks(info['filename']):
             await websocket.send_json({"text": text_chunk})
 
+        # Signal completion
         await websocket.send_json({"status": "complete"})
 
     except Exception as e:
@@ -132,12 +158,22 @@ async def websocket_transcribe(websocket: WebSocket):
 
 
 def download_audio(url: str, ydl_opts: dict):
+    """
+    Downloads audio from YouTube using yt-dlp.
+
+    Args:
+        url: YouTube URL to download
+        ydl_opts: YouTube download options
+
+    Returns:
+        dict: Video info with added 'filename' pointing to downloaded WAV file
+    """
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
 
         # Construct filename from output template
         filename = ydl.prepare_filename(info)
-        # Replace extension with .wav if postprocessing converts it
+        # Replace extension with .wav (postprocessor converts to WAV)
         filename = filename.rsplit(".", 1)[0] + ".wav"
 
         info['filename'] = filename
@@ -145,6 +181,18 @@ def download_audio(url: str, ydl_opts: dict):
 
 
 async def process_audio_chunks(filename: str):
-    chunks,  sample_rate, noise_profile = split_audio_on_silence(filename)
+    """
+    Processes audio file in chunks and yields transcribed text.
+
+    Args:
+        filename: Path to WAV audio file
+
+    Yields:
+        str: Chunks of transcribed text
+    """
+    # Split audio into chunks based on silence
+    chunks, sample_rate, noise_profile = split_audio_on_silence(filename)
+
+    # Process each chunk and yield transcription
     for chunk in chunks:
         yield speech_to_text(chunk, sample_rate, noise_profile)
