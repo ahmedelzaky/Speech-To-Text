@@ -1,9 +1,10 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Body
+from fastapi import FastAPI, UploadFile, File, HTTPException, Body, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from processing.audio_converter import convert_to_wav
-from processing.speech_recognizer import speech_to_text
+from processing.speech_recognizer import speech_to_text, split_audio_on_silence
 import yt_dlp
-import uuid
+from concurrent.futures import ThreadPoolExecutor
+import asyncio
 from typing import Optional
 import re
 import os
@@ -14,6 +15,8 @@ YOUTUBE_REGEX = r'(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.(com|be)
 
 origins = [
     "http://localhost:8080",
+    "http://localhost:4173",
+    "https://c486-197-160-192-168.ngrok-free.app/"
 ]
 app.add_middleware(
     CORSMiddleware,
@@ -52,8 +55,13 @@ async def transcribe_audio(file: UploadFile = File(...)):
                 raise HTTPException(
                     status_code=400, detail="Conversion failed")
 
-        # Transcribe
-        text = speech_to_text(wav_path)
+        # Process audio
+        chunks, sample_rate, noise_profile = split_audio_on_silence(wav_path)
+        text = ""
+        for chunk in chunks:
+            chunk_text = speech_to_text(chunk, sample_rate, noise_profile)
+            text += chunk_text + " "
+        text = re.sub(r'\s+', ' ', text).strip()  # Clean up whitespace
 
         # Cleanup
         for path in [input_path, wav_path]:
@@ -66,17 +74,24 @@ async def transcribe_audio(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/transcribe-youtube")
-async def transcribe_youtube(
-    url: str = Body(..., embed=True,
-                    example="https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
-    max_duration: Optional[int] = Body(3600)  # Default 1 hour limit
-):
-    try:
-        # Validate YouTube URL
-        if not re.match(YOUTUBE_REGEX, url, re.IGNORECASE):
-            raise HTTPException(status_code=400, detail="Invalid YouTube URL")
+@app.websocket("/ws/transcribe-youtube")
+async def websocket_transcribe(websocket: WebSocket):
+    await websocket.accept()
+    executor = ThreadPoolExecutor()
 
+    try:
+        # Receive YouTube URL from client
+        data = await websocket.receive_json()
+        url = data.get('url')
+
+        if not url:
+            await websocket.send_json({"error": "Missing YouTube URL"})
+            return
+
+        # Send initial status
+        await websocket.send_json({"status": "downloading"})
+
+        # Download audio
         ydl_opts = {
             'format': 'bestaudio/best',
             'outtmpl': 'temp_uploads/%(id)s.%(ext)s',
@@ -88,28 +103,44 @@ async def transcribe_youtube(
             'noplaylist': True,
             'quiet': True,
             'no_warnings': True,
-            'max_duration': max_duration,
+            'progress_hooks': [lambda d: print(f"Download progress: {d.get('_percent_str', 'N/A')}")]
         }
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            audio_filename = ydl.prepare_filename(info).replace(
-                '.webm', '.wav').replace('.m4a', '.wav')
+        # Run blocking tasks in thread pool
+        loop = asyncio.get_event_loop()
+        info = await loop.run_in_executor(executor, download_audio, url, ydl_opts)
 
-            if not os.path.exists(audio_filename):
-                raise HTTPException(
-                    status_code=500, detail="Failed to download audio")
+        # Send conversion status
+        await websocket.send_json({"status": "converting"})
 
-            # Transcribe using existing function
-            text = speech_to_text(audio_filename)
+        # Process audio in chunks
+        async for text_chunk in process_audio_chunks(info['filename']):
+            await websocket.send_json({"text": text_chunk})
 
-            # Cleanup
-            os.remove(audio_filename)
+        await websocket.send_json({"status": "complete"})
 
-            return {"transcription": text}
-
-    except yt_dlp.utils.DownloadError as e:
-        raise HTTPException(
-            status_code=400, detail=f"YouTube download failed: {str(e)}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        await websocket.send_json({"error": str(e)})
+        print(f"Error: {e}")
+    finally:
+        await websocket.close()
+
+
+def download_audio(url: str, ydl_opts: dict):
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+
+        # Construct filename from output template
+        filename = ydl.prepare_filename(info)
+        # Replace extension with .wav if postprocessing converts it
+        filename = filename.rsplit(".", 1)[0] + ".wav"
+
+        info['filename'] = filename
+        return info
+
+
+
+async def process_audio_chunks(filename: str):
+    chunks,  sample_rate, noise_profile = split_audio_on_silence(filename)
+    for chunk in chunks:
+        yield speech_to_text(chunk, sample_rate, noise_profile)

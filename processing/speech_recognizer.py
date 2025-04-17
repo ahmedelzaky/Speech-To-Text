@@ -9,28 +9,29 @@ processor = Wav2Vec2Processor.from_pretrained(
 model = Wav2Vec2ForCTC.from_pretrained("facebook/wav2vec2-base-960h")
 
 
-def speech_to_text(audio_file):
+def speech_to_text(chunk, sample_rate, noise_profile):
+    text = process_chunk(chunk, sample_rate, processor, model, noise_profile)
+    print(f"Transcription ({len(text)} characters): {text}")
+    return text
+
+
+def split_audio_on_silence(audio_file):
+    # Load audio file
     audio, sample_rate = librosa.load(audio_file, sr=16000)
     print(f"Total duration: {len(audio)/sample_rate:.2f} seconds")
 
     visualize_audio(audio, sample_rate, audio_file.replace(".wav", ".png"))
 
-    # Find noise profile
+    # Generate noise profile
     noise_profile = find_noise_profile(audio, sample_rate)
 
-    # Split on silence using updated librosa
-    chunks = librosa.effects.split(
+    # Get intervals of speech (not silence)
+    intervals = librosa.effects.split(
         audio, top_db=25, frame_length=2048, hop_length=512)
-    print(f"Found {len(chunks)} speech segments")
 
-    full_text = []
-    for i, (start, end) in enumerate(chunks):
-        chunk = audio[start:end]
-        print(
-            f"Processing segment {i+1}/{len(chunks)} ({len(chunk)/sample_rate:.2f}s)")
-        text = process_chunk(chunk, sample_rate,
-                             processor, model, noise_profile)
-        print(f"Transcription ({len(text)} characters): {text}")
-        full_text.append(text)
+    print(f"Found {len(intervals)} speech segments")
 
-    return " ".join(full_text)
+    # Extract audio segments
+    chunks = [audio[start:end] for start, end in intervals]
+
+    return chunks, sample_rate, noise_profile

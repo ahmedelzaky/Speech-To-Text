@@ -1,8 +1,12 @@
-import librosa.display
 import matplotlib.pyplot as plt
+import librosa.display
+import matplotlib
 import numpy as np
 
-def visualize_audio(audio, sample_rate , output_path="audio.png"):
+matplotlib.use('Agg')  # Use non-GUI backend
+
+
+def visualize_audio(audio, sample_rate, output_path="audio.png"):
     plt.figure(figsize=(12, 8))
 
     # Plot waveform
@@ -15,7 +19,7 @@ def visualize_audio(audio, sample_rate , output_path="audio.png"):
     stft = librosa.stft(audio)
     spectrogram = np.abs(stft)  # Take absolute value for magnitude
     librosa.display.specshow(librosa.amplitude_to_db(spectrogram, ref=np.max),
-                            sr=sample_rate, x_axis="time", y_axis="log")
+                             sr=sample_rate, x_axis="time", y_axis="log")
     plt.title("Spectrogram (Frequency over Time)")
     plt.colorbar(format="%+2.0f dB")
     plt.tight_layout()
