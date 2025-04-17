@@ -1,23 +1,42 @@
-
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Copy, Check, Loader2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { useTypewriter } from "@/hooks/useTypewriter";
 
 interface TranscriptionResultProps {
   text: string;
   isLoading: boolean;
+  isStreaming?: boolean;
 }
 
-const TranscriptionResult = ({ text, isLoading }: TranscriptionResultProps) => {
+const TranscriptionResult = ({
+  text,
+  isLoading,
+  isStreaming = false,
+}: TranscriptionResultProps) => {
   const [copied, setCopied] = useState(false);
-  
+  const textRef = useRef<HTMLDivElement>(null);
+
+  // Use typewriter hook to progressively show text
+  const animatedText = useTypewriter(text, isLoading, 30);
+
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("Copy failed:", err);
+    }
   };
-  
+
+  useEffect(() => {
+    if (textRef.current) {
+      textRef.current.scrollTop = textRef.current.scrollHeight;
+    }
+  }, [animatedText]);
+
   return (
     <Card className="p-6 w-full max-w-4xl mx-auto mt-10">
       <div className="flex items-center justify-between mb-4">
@@ -41,8 +60,9 @@ const TranscriptionResult = ({ text, isLoading }: TranscriptionResultProps) => {
           </Button>
         )}
       </div>
-      
-      <div 
+
+      <div
+        ref={textRef}
         className="bg-muted rounded-lg p-4 min-h-[200px] max-h-[400px] overflow-y-auto whitespace-pre-wrap text-left"
       >
         {isLoading ? (
@@ -52,7 +72,7 @@ const TranscriptionResult = ({ text, isLoading }: TranscriptionResultProps) => {
             <p className="text-sm">This may take a moment</p>
           </div>
         ) : text ? (
-          text
+          <p className="text-muted-foreground">{animatedText}</p>
         ) : (
           <div className="h-full flex items-center justify-center text-muted-foreground">
             <p>Your transcribed text will appear here</p>

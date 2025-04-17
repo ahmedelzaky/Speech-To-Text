@@ -1,4 +1,3 @@
-
 import { Headphones } from "lucide-react";
 
 const Header = () => {
@@ -14,17 +13,28 @@ const Header = () => {
         <nav>
           <ul className="flex items-center gap-6">
             <li>
-              <a href="#features" className="text-muted-foreground hover:text-foreground transition-colors">
+              <a
+                href="#features"
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
                 Features
               </a>
             </li>
             <li>
-              <a href="#how-it-works" className="text-muted-foreground hover:text-foreground transition-colors">
+              <a
+                href="#how-it-works"
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
                 How It Works
               </a>
             </li>
             <li>
-              <button className="btn-primary">Get Started</button>
+              <button
+                className="btn-primary"
+                onClick={() => (window.location.href = "#get-started")}
+              >
+                Get Started
+              </button>
             </li>
           </ul>
         </nav>

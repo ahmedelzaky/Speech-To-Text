@@ -1,4 +1,3 @@
-
 import { useState, useRef, useCallback, DragEvent } from "react";
 import { Upload, Link, Mic, Loader2, FileAudio, X } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -12,43 +11,50 @@ interface AudioInputProps {
   onRecordingComplete: (blob: Blob) => void;
 }
 
-const AudioInput = ({ onFileSelect, onUrlSubmit, onRecordingComplete }: AudioInputProps) => {
+const AudioInput = ({
+  onFileSelect,
+  onUrlSubmit,
+  onRecordingComplete,
+}: AudioInputProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const [url, setUrl] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  
+
   // Handle file drop
   const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(true);
   }, []);
-  
+
   const handleDragLeave = useCallback((e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
   }, []);
-  
-  const handleDrop = useCallback((e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(false);
-    
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const file = e.dataTransfer.files[0];
-      if (file.type.startsWith("audio/")) {
-        setSelectedFile(file);
-        onFileSelect(file);
+
+  const handleDrop = useCallback(
+    (e: DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      setIsDragging(false);
+
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        const file = e.dataTransfer.files[0];
+        if (file.type.startsWith("audio/")) {
+          setSelectedFile(file);
+          onFileSelect(file);
+        }
       }
-    }
-  }, [onFileSelect]);
-  
+    },
+    [onFileSelect]
+  );
+
   // Handle file select via input
   const handleFileSelect = useCallback(() => {
     if (fileInputRef.current?.files && fileInputRef.current.files.length > 0) {
@@ -57,7 +63,7 @@ const AudioInput = ({ onFileSelect, onUrlSubmit, onRecordingComplete }: AudioInp
       onFileSelect(file);
     }
   }, [onFileSelect]);
-  
+
   // Handle URL input
   const handleUrlSubmit = useCallback(() => {
     if (url.trim()) {
@@ -69,7 +75,7 @@ const AudioInput = ({ onFileSelect, onUrlSubmit, onRecordingComplete }: AudioInp
       }, 1500);
     }
   }, [url, onUrlSubmit]);
-  
+
   // Handle recording
   const startRecording = useCallback(async () => {
     try {
@@ -77,48 +83,53 @@ const AudioInput = ({ onFileSelect, onUrlSubmit, onRecordingComplete }: AudioInp
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
-      
+
       mediaRecorder.ondataavailable = (e) => {
         audioChunksRef.current.push(e.data);
       };
-      
+
       mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/wav" });
+        const audioBlob = new Blob(audioChunksRef.current, {
+          type: "audio/wav",
+        });
         onRecordingComplete(audioBlob);
-        
+
         // Stop all tracks of the stream
-        stream.getTracks().forEach(track => track.stop());
+        stream.getTracks().forEach((track) => track.stop());
       };
-      
+
       // Start the timer
       let seconds = 0;
       timerRef.current = setInterval(() => {
         seconds += 1;
         setRecordingTime(seconds);
       }, 1000);
-      
+
       mediaRecorder.start();
       setIsRecording(true);
     } catch (error) {
       console.error("Error starting recording:", error);
     }
   }, [onRecordingComplete]);
-  
+
   const stopRecording = useCallback(() => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+    if (
+      mediaRecorderRef.current &&
+      mediaRecorderRef.current.state !== "inactive"
+    ) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
-      
+
       // Clear the timer
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
-      
+
       setRecordingTime(0);
     }
   }, []);
-  
+
   // Reset selected file
   const clearSelectedFile = useCallback(() => {
     setSelectedFile(null);
@@ -126,16 +137,18 @@ const AudioInput = ({ onFileSelect, onUrlSubmit, onRecordingComplete }: AudioInp
       fileInputRef.current.value = "";
     }
   }, []);
-  
+
   // Format recording time
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+    return `${mins.toString().padStart(2, "0")}:${secs
+      .toString()
+      .padStart(2, "0")}`;
   };
-  
+
   return (
-    <div className="w-full max-w-4xl mx-auto">
+    <div className="w-full max-w-4xl mx-auto" id="get-started">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Drag & Drop Area */}
         <Card className="md:col-span-2 overflow-hidden">
@@ -152,7 +165,9 @@ const AudioInput = ({ onFileSelect, onUrlSubmit, onRecordingComplete }: AudioInp
             {!selectedFile ? (
               <>
                 <Upload className="h-12 w-12 text-muted-foreground mb-4 animate-wave" />
-                <h3 className="text-lg font-medium mb-2">Drag & Drop Audio Files</h3>
+                <h3 className="text-lg font-medium mb-2">
+                  Drag & Drop Audio Files
+                </h3>
                 <p className="text-muted-foreground mb-4 text-center">
                   or browse from your computer
                 </p>
@@ -164,7 +179,7 @@ const AudioInput = ({ onFileSelect, onUrlSubmit, onRecordingComplete }: AudioInp
                   className="hidden"
                   id="audio-file-input"
                 />
-                <Button 
+                <Button
                   onClick={() => fileInputRef.current?.click()}
                   variant="outline"
                 >
@@ -174,13 +189,15 @@ const AudioInput = ({ onFileSelect, onUrlSubmit, onRecordingComplete }: AudioInp
             ) : (
               <div className="flex flex-col items-center">
                 <FileAudio className="h-12 w-12 text-blue mb-4" />
-                <p className="font-medium mb-2 break-all text-center">{selectedFile.name}</p>
+                <p className="font-medium mb-2 break-all text-center">
+                  {selectedFile.name}
+                </p>
                 <p className="text-sm text-muted-foreground mb-4">
                   {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB
                 </p>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={clearSelectedFile}
                   className="flex items-center gap-1"
                 >
@@ -190,7 +207,7 @@ const AudioInput = ({ onFileSelect, onUrlSubmit, onRecordingComplete }: AudioInp
             )}
           </div>
         </Card>
-        
+
         {/* URL and Recording */}
         <Card className="p-6 space-y-6">
           {/* URL Input */}
@@ -206,8 +223,8 @@ const AudioInput = ({ onFileSelect, onUrlSubmit, onRecordingComplete }: AudioInp
                 onChange={(e) => setUrl(e.target.value)}
                 disabled={isLoading}
               />
-              <Button 
-                onClick={handleUrlSubmit} 
+              <Button
+                onClick={handleUrlSubmit}
                 disabled={!url.trim() || isLoading}
               >
                 {isLoading ? (
@@ -218,7 +235,7 @@ const AudioInput = ({ onFileSelect, onUrlSubmit, onRecordingComplete }: AudioInp
               </Button>
             </div>
           </div>
-          
+
           {/* Recording */}
           <div>
             <h3 className="text-lg font-medium mb-3 flex items-center gap-2">
@@ -238,13 +255,13 @@ const AudioInput = ({ onFileSelect, onUrlSubmit, onRecordingComplete }: AudioInp
                   ) : (
                     <Mic className="h-6 w-6" />
                   )}
-                  
+
                   {isRecording && (
                     <span className="absolute inset-0 rounded-full border-4 border-destructive animate-pulse-ring" />
                   )}
                 </Button>
               </div>
-              
+
               {isRecording && (
                 <div className="text-destructive font-medium">
                   {formatTime(recordingTime)}

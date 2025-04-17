@@ -7,7 +7,6 @@ import Features from "@/components/Features";
 import HowItWorks from "@/components/HowItWorks";
 import Footer from "@/components/Footer";
 import axios from "axios";
-import { set } from "date-fns";
 
 const Index = () => {
   const [transcribedText, setTranscribedText] = useState("");
@@ -37,34 +36,38 @@ const Index = () => {
     setIsProcessing(false);
   };
 
-  const processAudioUrl = async (url: string) => {
+  const processYoutubeUrl = async (url: string) => {
     setIsProcessing(true);
+    setTranscribedText("");
 
-    try {
-      const response = await axios.post(
-        "http://localhost:8000/transcribe-youtube",
-        {
-          url: url,
-        },
-        {
-          headers: {
-            Accept: "application/json",
-          },
-        }
-      );
-      console.log("Transcription response:", response.data);
-      setTranscribedText(response.data.transcription);
-    } catch (error) {
-      console.error("Error during transcription:", error);
+    const ws = new WebSocket("ws://localhost:8000/ws/transcribe-youtube");
 
-      setTranscribedText(
-        error.response
-          ? error.response.data.detail
-          : "Error during transcription"
-      );
-    }
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ url }));
+    };
 
-    setIsProcessing(false);
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      console.log("WebSocket message:", data);
+
+      if (data.text) {
+        setIsProcessing(false);
+        setTranscribedText((prev) => prev + " " + data.text);
+      }
+      if (data.progress) {
+        console.log(`Download progress: ${data.progress}`);
+      }
+      if (data.status) {
+        console.log(`Status: ${data.status}`);
+      }
+      if (data.error) {
+        setIsProcessing(false);
+      }
+    };
+
+    ws.onclose = () => {
+      setIsProcessing(false);
+    };
   };
 
   const handleFileSelect = (file: File) => {
@@ -74,7 +77,7 @@ const Index = () => {
 
   const handleUrlSubmit = (url: string) => {
     console.log("URL submitted:", url);
-    processAudioUrl(url);
+    processYoutubeUrl(url);
   };
 
   const handleRecordingComplete = (blob: Blob) => {
