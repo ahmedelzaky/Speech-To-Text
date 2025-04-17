@@ -90,8 +90,11 @@ audio-transcription-service/
    ```bash
    # Ubuntu/Debian
    sudo apt-get install ffmpeg
+
+   # Windows
+   winget install ffmpeg
    ```
 
-2. **WebSocket connection errors**:
+3. **WebSocket connection errors**:
    - Verify backend service is running
    - Check CORS settings in `main.py`
