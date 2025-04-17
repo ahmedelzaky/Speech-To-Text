@@ -2,7 +2,7 @@ import librosa.display
 import matplotlib.pyplot as plt
 import numpy as np
 
-def visualize_audio(audio, sample_rate):
+def visualize_audio(audio, sample_rate , output_path="audio.png"):
     plt.figure(figsize=(12, 8))
 
     # Plot waveform
@@ -19,4 +19,5 @@ def visualize_audio(audio, sample_rate):
     plt.title("Spectrogram (Frequency over Time)")
     plt.colorbar(format="%+2.0f dB")
     plt.tight_layout()
-    plt.savefig("audio.png")
+    plt.savefig(output_path)
+    plt.close()

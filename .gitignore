@@ -1,0 +1,9 @@
+# ignore python cache files
+__pycache__/
+# image files
+*.png
+*.jpg
+*.jpeg
+
+# ignore temp uploads
+temp_uploads/

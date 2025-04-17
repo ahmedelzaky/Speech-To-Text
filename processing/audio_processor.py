@@ -1,6 +1,7 @@
 import noisereduce as nr
 import librosa
 import torch 
+
 # reduce noise in audio and chunk
 def find_noise_profile(audio, sample_rate):
     intervals = librosa.effects.split(audio, top_db=20, frame_length=2048, hop_length=512)
