@@ -6,38 +6,57 @@ import TranscriptionResult from "@/components/TranscriptionResult";
 import Features from "@/components/Features";
 import HowItWorks from "@/components/HowItWorks";
 import Footer from "@/components/Footer";
-import axios from "axios";
 
 const Index = () => {
   const [transcribedText, setTranscribedText] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Simulated processing function - in a real app this would call an API
   const processAudio = async (audio: File) => {
-    setIsProcessing(true);
-    try {
-      const formData = new FormData();
-      formData.append("file", audio, audio.name);
-      const response = await axios.post(
-        "http://localhost:8000/transcribe",
-        formData,
-        {
-          headers: {
-            Accept: "application/json",
-          },
+    setTranscribedText("");
+    const ws = new WebSocket("ws://localhost:8000/ws/transcribe");
+    ws.binaryType = "arraybuffer";
+
+    ws.onopen = () => {
+      console.log("WebSocket connection established");
+
+      // Step 1: send filename
+      ws.send(JSON.stringify({ filename: audio.name }));
+
+      // Step 2: send audio data
+      audio.arrayBuffer().then((buffer) => {
+        ws.send(buffer);
+      });
+    };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      console.log("WebSocket message:", data);
+
+      if (data.text) {
+        setIsProcessing(false);
+        setTranscribedText((prev) => prev + " " + data.text);
+      }
+      if (data.status) {
+        console.log(`Status: ${data.status}`);
+        if (data.status === "complete") {
+          ws.close(); // Only close here after processing is done
         }
-      );
-      console.log("Transcription response:", response.data);
-      setTranscribedText(response.data.transcription);
-    } catch (error) {
-      console.error("Error during transcription:", error);
-      setTranscribedText("Error during transcription");
-    }
-    setIsProcessing(false);
+      }
+      if (data.error) {
+        setIsProcessing(false);
+        setTranscribedText("Error: " + data.error);
+        ws.close(); // Also close on error
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error("WebSocket error:", error);
+      setTranscribedText("WebSocket error");
+    };
+
   };
 
   const processYoutubeUrl = async (url: string) => {
-    setIsProcessing(true);
     setTranscribedText("");
 
     const ws = new WebSocket("ws://localhost:8000/ws/transcribe-youtube");
@@ -59,10 +78,21 @@ const Index = () => {
       }
       if (data.status) {
         console.log(`Status: ${data.status}`);
+        if (data.status === "complete") {
+          ws.close(); // Only close here after processing is done
+        }
       }
       if (data.error) {
         setIsProcessing(false);
+        setTranscribedText("Error: " + data.error);
+        ws.close(); // Also close on error
       }
+    };
+
+    ws.onerror = (error) => {
+      console.error("WebSocket error:", error);
+      setTranscribedText("WebSocket error");
+      setIsProcessing(false);
     };
 
     ws.onclose = () => {
@@ -72,11 +102,13 @@ const Index = () => {
 
   const handleFileSelect = (file: File) => {
     console.log("File selected:", file.name);
+    setIsProcessing(true);
     processAudio(file);
   };
 
   const handleUrlSubmit = (url: string) => {
     console.log("URL submitted:", url);
+    setIsProcessing(true);
     processYoutubeUrl(url);
   };
 
@@ -88,6 +120,7 @@ const Index = () => {
         type: blob.type,
       }
     );
+    setIsProcessing(true);
     processAudio(audio);
   };
 

@@ -1,12 +1,13 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Body, WebSocket
+from fastapi import FastAPI, WebSocketDisconnect, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from processing.audio_converter import convert_to_wav
 from processing.speech_recognizer import speech_to_text, split_audio_on_silence
 import yt_dlp
 from concurrent.futures import ThreadPoolExecutor
 import asyncio
-from typing import Optional
+import tempfile
 import re
+from uuid import uuid4
 import os
 
 app = FastAPI()
@@ -16,7 +17,6 @@ YOUTUBE_REGEX = r'(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.(com|be)
 origins = [
     "http://localhost:8080",
     "http://localhost:4173",
-    "https://c486-197-160-192-168.ngrok-free.app/"
 ]
 app.add_middleware(
     CORSMiddleware,
@@ -32,46 +32,51 @@ def read_root():
     return {"Hello": "World"}
 
 
-@app.post("/transcribe")
-async def transcribe_audio(file: UploadFile = File(...)):
+@app.websocket("/ws/transcribe")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
     try:
-        # Create a temporary directory
-        temp_dir = "temp_uploads"
-        os.makedirs(temp_dir, exist_ok=True)
+        while True:
+            # Step 1: receive metadata (e.g., {"filename": "recording.mp3"})
+            file_info = await websocket.receive_json()
+            original_filename = file_info.get("filename", "audio.unknown")
 
-        # Save uploaded file directly with original extension
-        input_path = os.path.join(temp_dir, file.filename)
-        with open(input_path, "wb") as buffer:
-            content = await file.read()
-            buffer.write(content)
+            # Step 2: receive binary audio file
+            audio_bytes = await websocket.receive_bytes()
 
-        # Convert to WAV
-        if file.filename.lower().endswith(('.wav')):
-            wav_path = input_path
-        else:
-            wav_path = os.path.join(
-                temp_dir, f"{os.path.splitext(file.filename)[0]}.wav")
-            if not convert_to_wav(input_path, wav_path):
-                raise HTTPException(
-                    status_code=400, detail="Conversion failed")
+            # Prepare paths
+            _, ext = os.path.splitext(original_filename)
+            temp_dir = tempfile.gettempdir()
+            input_path = os.path.join(temp_dir, f"{uuid4().hex}{ext}")
+            wav_path = input_path  # Default
 
-        # Process audio
-        chunks, sample_rate, noise_profile = split_audio_on_silence(wav_path)
-        text = ""
-        for chunk in chunks:
-            chunk_text = speech_to_text(chunk, sample_rate, noise_profile)
-            text += chunk_text + " "
-        text = re.sub(r'\s+', ' ', text).strip()  # Clean up whitespace
+            # Save original file
+            with open(input_path, "wb") as f:
+                f.write(audio_bytes)
 
-        # Cleanup
-        for path in [input_path, wav_path]:
-            if os.path.exists(path):
-                os.remove(path)
+            # Convert if not WAV
+            if ext.lower() != ".wav":
+                wav_path = os.path.join(temp_dir, f"{uuid4().hex}.wav")
+                if not convert_to_wav(input_path, wav_path):
+                    await websocket.send_json({"error": "Conversion to WAV failed"})
+                    os.remove(input_path)
+                    continue
 
-        return {"transcription": text}
+            # Transcribe and stream results
+            async for text_chunk in process_audio_chunks(wav_path):
+                await websocket.send_json({"text": text_chunk})
 
+            await websocket.send_json({"status": "complete"})
+
+            # Clean up
+            for path in {input_path, wav_path}:
+                if os.path.exists(path):
+                    os.remove(path)
+
+    except WebSocketDisconnect:
+        print("WebSocket disconnected")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        await websocket.send_json({"error": str(e)})
 
 
 @app.websocket("/ws/transcribe-youtube")
@@ -137,7 +142,6 @@ def download_audio(url: str, ydl_opts: dict):
 
         info['filename'] = filename
         return info
-
 
 
 async def process_audio_chunks(filename: str):
