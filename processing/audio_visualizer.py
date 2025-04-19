@@ -53,7 +53,7 @@ def visualize_audio(audio, sample_rate, output_path="audio.png"):
                 dpi=100,  # Reduced from default 300 for smaller files
                 bbox_inches='tight',
                 pad_inches=0.2,
-                facecolor='black')
+                facecolor='white')
 
     # Explicit cleanup
     plt.close(fig)

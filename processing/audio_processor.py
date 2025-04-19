@@ -6,7 +6,7 @@ import torch
 # This helps in identifying what background noise to remove
 
 
-def find_noise_profile(audio, sample_rate):
+def  find_noise_profile(audio, sample_rate):
     """
     Identify silent segments in audio to extract noise profile.
 

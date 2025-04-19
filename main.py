@@ -61,7 +61,8 @@ async def websocket_endpoint(websocket: WebSocket):
 
         # Prepare temporary file paths
         _, ext = os.path.splitext(original_filename)
-        temp_dir = tempfile.gettempdir()
+        temp_dir = "temp_uploads"
+        os.makedirs(temp_dir, exist_ok=True)  # Ensure temp directory exists
         input_path = os.path.join(temp_dir, f"{uuid4().hex}{ext}")
         wav_path = input_path  # Default path if no conversion needed
 
