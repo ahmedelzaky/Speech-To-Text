@@ -56,7 +56,7 @@ def split_audio_on_silence(audio_file):
 
     # Detect speech segments using energy threshold
     intervals = librosa.effects.split(
-        audio,
+        reduced_noise,
         top_db=25,  # Silence threshold (higher = more sensitive)
         frame_length=2048,  # FFT window size
         hop_length=512,  # Analysis stride
@@ -64,6 +64,6 @@ def split_audio_on_silence(audio_file):
     print(f"Found {len(intervals)} speech segments")
 
     # Slice audio into chunks
-    chunks = [audio[start:end] for start, end in intervals]
+    chunks = [reduced_noise[start:end] for start, end in intervals]
 
     return chunks, sample_rate
