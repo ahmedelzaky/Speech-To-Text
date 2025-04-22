@@ -1,4 +1,3 @@
-import noisereduce as nr
 import librosa
 import torch
 
@@ -6,7 +5,7 @@ import torch
 # This helps in identifying what background noise to remove
 
 
-def  find_noise_profile(audio, sample_rate):
+def find_noise_profile(audio, sample_rate):
     """
     Identify silent segments in audio to extract noise profile.
 
@@ -31,7 +30,7 @@ def  find_noise_profile(audio, sample_rate):
 # Function to process an audio chunk through noise reduction and speech recognition
 
 
-def process_chunk(chunk, sample_rate, processor, model, noise_profile):
+def process_chunk(chunk, sample_rate, processor, model):
     """
     Process an audio chunk through noise reduction and speech recognition.
 
@@ -40,22 +39,13 @@ def process_chunk(chunk, sample_rate, processor, model, noise_profile):
         sample_rate (int): Sample rate of the audio
         processor: HuggingFace processor for the ASR model
         model: HuggingFace ASR model
-        noise_profile (np.array): Noise profile for noise reduction
 
     Returns:
         str: Recognized text from the audio chunk
     """
-    # Reduce noise in the audio chunk using the noise profile
-    reduced_noise = nr.reduce_noise(
-        y=chunk,
-        y_noise=noise_profile,
-        sr=sample_rate,
-        prop_decrease=0.85  # Reduce noise by 85%
-    )
-
     # Prepare audio for the ASR model using the processor
     inputs = processor(
-        reduced_noise,
+        chunk,
         sampling_rate=sample_rate,
         return_tensors="pt",  # Return PyTorch tensors
         padding=True

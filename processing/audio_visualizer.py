@@ -50,6 +50,7 @@ def visualize_audio(audio, sample_rate, output_path="audio.png"):
 
     # Save with optimized settings
     plt.savefig(output_path,
+                format='png',  # Save as PNG for better quality
                 dpi=100,  # Reduced from default 300 for smaller files
                 bbox_inches='tight',
                 pad_inches=0.2,

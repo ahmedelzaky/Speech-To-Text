@@ -5,7 +5,6 @@ from processing.speech_recognizer import speech_to_text, split_audio_on_silence
 import yt_dlp
 from concurrent.futures import ThreadPoolExecutor
 import asyncio
-import tempfile
 from uuid import uuid4
 import os
 
@@ -191,9 +190,10 @@ async def process_audio_chunks(filename: str):
     Yields:
         str: Chunks of transcribed text
     """
+
     # Split audio into chunks based on silence
-    chunks, sample_rate, noise_profile = split_audio_on_silence(filename)
+    chunks, sample_rate = split_audio_on_silence(filename)
 
     # Process each chunk and yield transcription
     for chunk in chunks:
-        yield speech_to_text(chunk, sample_rate, noise_profile)
+        yield speech_to_text(chunk, sample_rate)
