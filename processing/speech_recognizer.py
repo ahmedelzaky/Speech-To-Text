@@ -5,6 +5,8 @@ from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
 from .audio_processor import find_noise_profile, process_chunk
 from .audio_visualizer import visualize_audio
 from uuid import uuid4
+import torch
+
 
 # Load model
 # for high accuracy
@@ -16,6 +18,10 @@ from uuid import uuid4
 # for fast processing
 processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")
 model = Wav2Vec2ForCTC.from_pretrained("facebook/wav2vec2-base-960h")
+
+# Load model to GPU if available
+if torch.cuda.is_available():
+    model.to("cuda")
 
 
 def speech_to_text(chunk, sample_rate):
@@ -33,7 +39,7 @@ def split_audio_on_silence(audio_file):
     print(f"Total duration: {len(audio)/sample_rate:.2f} seconds")
 
     # Extract noise profile from silent segments
-    #noise_profile = find_noise_profile(audio, sample_rate)
+    # noise_profile = find_noise_profile(audio, sample_rate)
 
     # Reduce noise in the audio chunk using the noise profile
     reduced_noise = nr.reduce_noise(
